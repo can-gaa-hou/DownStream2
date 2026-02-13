@@ -1,0 +1,12 @@
+on:
+  check_run:
+    types: [created]
+
+jobs:
+  ci:
+    if: github.event.check_run.name == 'from-a-pr'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Triggered by A repo"
+          echo "${{ github.event.check_run.output.summary }}"
