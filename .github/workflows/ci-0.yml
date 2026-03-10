@@ -34,7 +34,7 @@ jobs:
           SERVER_URL: http://111.119.217.84:8001
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            RESULT=failure
+            RESULT=success
           else
             RESULT=failure
           fi
