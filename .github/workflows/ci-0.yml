@@ -2,7 +2,9 @@ name: PyTorch Downstream CI 0
 
 on:
   repository_dispatch:
-    types: [pytorch-pr-trigger]
+    types:
+      - pytorch-pr-trigger
+      - pytorch-pr-close
   push:
     branches:
       - main
@@ -14,19 +16,21 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.commit_sha || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   ci:
+    if: ${{ github.event_name != 'repository_dispatch' || github.event.action == 'pytorch-pr-trigger' }}
     runs-on: ubuntu-latest
-    concurrency:
-      group: ${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Report in-progress result to server
-        if: always()
+        if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'pytorch-pr-trigger' }}
         shell: bash
         run: |
           OIDC_RESPONSE="$(curl -fsSL \
@@ -44,7 +48,7 @@ jobs:
               \"upstream_repo\": \"${{ github.event.client_payload.upstream_repo }}\",
               \"commit_sha\": \"${{ github.event.client_payload.commit_sha }}\",
               \"status\": \"in_progress\",
-              \"conclusion\": \"neutral\",
+              \"conclusion\": \"\",
               \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
             }"
 
@@ -55,7 +59,7 @@ jobs:
           echo "Done"
 
       - name: Report final result to server
-        if: always()
+        if: ${{ always() && github.event_name == 'repository_dispatch' && github.event.action == 'pytorch-pr-trigger' }}
         shell: bash
         run: |
           if [ "${{ job.status }}" = "success" ]; then
@@ -82,3 +86,13 @@ jobs:
               \"conclusion\": \"$RESULT\",
               \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
             }"
+
+  close:
+    if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'pytorch-pr-close' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Close event marker
+        run: |
+          echo "Received close event for ${{ github.event.client_payload.commit_sha }}"
+          echo "This run joins the same concurrency group and cancels any in-progress trigger run."
