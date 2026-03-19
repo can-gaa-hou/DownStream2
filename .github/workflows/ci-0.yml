@@ -4,25 +4,16 @@ on:
   repository_dispatch:
     types:
       - pytorch-pr-trigger
-      - pytorch-pr-close
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.commit_sha || github.sha }}
-  cancel-in-progress: true
+env:
+  WORKFLOW_NAME: PyTorch Downstream CI 0
 
 jobs:
   ci:
-    if: ${{ github.event_name != 'repository_dispatch' || github.event.action == 'pytorch-pr-trigger' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -30,27 +21,42 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Report in-progress result to server
-        if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'pytorch-pr-trigger' }}
         shell: bash
         run: |
-          OIDC_RESPONSE="$(curl -fsSL \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL")"
+          set -euo pipefail
 
-          OIDC_TOKEN="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$OIDC_RESPONSE")"
+          payload="$(cat <<EOF
+          {
+            "workflow_name": "${WORKFLOW_NAME}",
+            "upstream_repo": "${{ github.event.client_payload.upstream_repo }}",
+            "commit_sha": "${{ github.event.client_payload.commit_sha }}",
+            "status": "in_progress",
+            "conclusion": "",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          )"
 
-          curl --retry 3 --retry-delay 5 --retry-max-time 30 \
-            -X POST "${{ vars.CI_RESULT_URL }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OIDC_TOKEN" \
-            -d "{
-              \"workflow_name\": \"PyTorch Downstream CI 0\",
-              \"upstream_repo\": \"${{ github.event.client_payload.upstream_repo }}\",
-              \"commit_sha\": \"${{ github.event.client_payload.commit_sha }}\",
-              \"status\": \"in_progress\",
-              \"conclusion\": \"\",
-              \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-            }"
+          for attempt in 1 2 3; do
+            oidc_response="$(curl -fsSL \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL")"
+
+            oidc_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$oidc_response")"
+
+            if curl -fsSL \
+              -X POST "${{ vars.CI_RESULT_URL }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $oidc_token" \
+              -d "$payload"; then
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "failed to report in_progress result"
+          exit 1
 
       - name: Run CI
         run: |
@@ -59,40 +65,46 @@ jobs:
           echo "Done"
 
       - name: Report final result to server
-        if: ${{ always() && github.event_name == 'repository_dispatch' && github.event.action == 'pytorch-pr-trigger' }}
+        if: always()
         shell: bash
         run: |
+          set -euo pipefail
+
           if [ "${{ job.status }}" = "success" ]; then
-            RESULT=success
+            result="success"
           else
-            RESULT=failure
+            result="failure"
           fi
 
-          OIDC_RESPONSE="$(curl -fsSL \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL")"
+          payload="$(cat <<EOF
+          {
+            "workflow_name": "${WORKFLOW_NAME}",
+            "upstream_repo": "${{ github.event.client_payload.upstream_repo }}",
+            "commit_sha": "${{ github.event.client_payload.commit_sha }}",
+            "status": "completed",
+            "conclusion": "${result}",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          )"
 
-          OIDC_TOKEN="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$OIDC_RESPONSE")"
+          for attempt in 1 2 3; do
+            oidc_response="$(curl -fsSL \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL")"
 
-          curl --retry 3 --retry-delay 5 --retry-max-time 30 \
-            -X POST "${{ vars.CI_RESULT_URL }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OIDC_TOKEN" \
-            -d "{
-              \"workflow_name\": \"PyTorch Downstream CI 0\",
-              \"upstream_repo\": \"${{ github.event.client_payload.upstream_repo }}\",
-              \"commit_sha\": \"${{ github.event.client_payload.commit_sha }}\",
-              \"status\": \"completed\",
-              \"conclusion\": \"$RESULT\",
-              \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-            }"
+            oidc_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$oidc_response")"
 
-  close:
-    if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'pytorch-pr-close' }}
-    runs-on: ubuntu-latest
+            if curl -fsSL \
+              -X POST "${{ vars.CI_RESULT_URL }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $oidc_token" \
+              -d "$payload"; then
+              exit 0
+            fi
 
-    steps:
-      - name: Close event marker
-        run: |
-          echo "Received close event for ${{ github.event.client_payload.commit_sha }}"
-          echo "This run joins the same concurrency group and cancels any in-progress trigger run."
+            sleep 5
+          done
+
+          echo "failed to report completed result"
+          exit 1
