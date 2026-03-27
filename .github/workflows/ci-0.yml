@@ -20,91 +20,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Report in-progress result to server
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          payload="$(cat <<EOF
-          {
-            "workflow_name": "${WORKFLOW_NAME}",
-            "upstream_repo": "${{ github.event.client_payload.upstream_repo }}",
-            "commit_sha": "${{ github.event.client_payload.commit_sha }}",
-            "status": "in_progress",
-            "conclusion": "",
-            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          }
-          EOF
-          )"
-
-          for attempt in 1 2 3; do
-            oidc_response="$(curl -fsSL \
-              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "$ACTIONS_ID_TOKEN_REQUEST_URL")"
-
-            oidc_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$oidc_response")"
-
-            if curl -fsSL \
-              -X POST "${{ vars.CI_RESULT_URL }}" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $oidc_token" \
-              -d "$payload"; then
-              exit 0
-            fi
-
-            sleep 5
-          done
-
-          echo "failed to report in_progress result"
-          exit 1
-
       - name: Run CI
         run: |
           echo "Running downstream workflow 0..."
           sleep 30
           echo "Done"
-
-      - name: Report final result to server
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ "${{ job.status }}" = "success" ]; then
-            result="success"
-          else
-            result="failure"
-          fi
-
-          payload="$(cat <<EOF
-          {
-            "workflow_name": "${WORKFLOW_NAME}",
-            "upstream_repo": "${{ github.event.client_payload.upstream_repo }}",
-            "commit_sha": "${{ github.event.client_payload.commit_sha }}",
-            "status": "completed",
-            "conclusion": "${result}",
-            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          }
-          EOF
-          )"
-
-          for attempt in 1 2 3; do
-            oidc_response="$(curl -fsSL \
-              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "$ACTIONS_ID_TOKEN_REQUEST_URL")"
-
-            oidc_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$oidc_response")"
-
-            if curl -fsSL \
-              -X POST "${{ vars.CI_RESULT_URL }}" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $oidc_token" \
-              -d "$payload"; then
-              exit 0
-            fi
-
-            sleep 5
-          done
 
           echo "failed to report completed result"
           exit 1
