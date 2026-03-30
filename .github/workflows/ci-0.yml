@@ -30,7 +30,7 @@ jobs:
       #         upstream-repo and commit-sha are read automatically from the
       #         repository_dispatch client_payload.
       - name: Checkout upstream PyTorch PR
-        uses: pytorch/test-infra/.github/actions/checkout-upstream-pr@resuable-action
+        uses: cosdt/test-infra/.github/actions/checkout-upstream-pr@resuable-action
         with:
           path: pytorch
 
