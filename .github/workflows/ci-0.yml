@@ -34,6 +34,13 @@ jobs:
         with:
           path: pytorch
 
+      - name: Show last 10 commits (upstream pytorch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd pytorch
+          git --no-pager log -n 10 --oneline --decorate
+
       # # Step 4: Run CI
       # - name: Run CI
       #   run: |
