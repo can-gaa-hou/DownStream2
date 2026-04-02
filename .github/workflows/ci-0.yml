@@ -1,10 +1,14 @@
 name: PyTorch Downstream CI 0
 
+run-name: >-
+  Downstream CI 0 -
+  ${{ github.event.client_payload.event_type == 'pull_request'
+      && format('PR #{0}', github.event.client_payload.payload.pull_request.number)
+      || format('Push {0}', github.event.client_payload.payload.after) }}
+
 on:
   repository_dispatch:
-    types:
-      - pull_request
-      - push
+    types: [pull_request, push]
 
 permissions:
   contents: read
