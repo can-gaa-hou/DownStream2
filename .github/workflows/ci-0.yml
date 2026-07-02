@@ -66,7 +66,7 @@ jobs:
         uses: cosdt/UpStream/.github/@main
         with:
           status: completed
-          conclusion: ${{ job.status }}
+          conclusion: failure
           job-name: ci-${{ matrix.config }}
           callback-url: https://nmbnhgoqesx4iuxuzoa7sjklna0ylkgr.lambda-url.us-east-1.on.aws/github/callback/
 
@@ -99,4 +99,34 @@ jobs:
         with:
           status: completed
           conclusion: success
+          callback-url: https://nmbnhgoqesx4iuxuzoa7sjklna0ylkgr.lambda-url.us-east-1.on.aws/github/callback/
+
+  ci-3:
+    if: ${{ github.event.client_payload.payload.action != 'closed' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout downstream repo
+        uses: actions/checkout@v6
+
+      # github.job is "ci" for every matrix leg, so pass a matrix-scoped job-name
+      # to give each leg its own upstream check run (crcr/.../ci/ci-<config>).
+      - name: Report in-progress to Relay Server
+        uses: cosdt/UpStream/.github/@main
+        with:
+          status: in_progress
+          callback-url: https://nmbnhgoqesx4iuxuzoa7sjklna0ylkgr.lambda-url.us-east-1.on.aws/github/callback/
+
+      - name: Run CI
+        run: |
+          echo "Running downstream CI (config=${{ matrix.config }})..."
+          sleep 30
+          echo "Done"
+
+      - name: Report final result to Relay Server
+        if: always()
+        uses: cosdt/UpStream/.github/@main
+        with:
+          status: completed
+          conclusion: cancelled
           callback-url: https://nmbnhgoqesx4iuxuzoa7sjklna0ylkgr.lambda-url.us-east-1.on.aws/github/callback/
