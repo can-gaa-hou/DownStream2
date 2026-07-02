@@ -58,7 +58,7 @@ jobs:
       - name: Run CI
         run: |
           echo "Running downstream CI (config=${{ matrix.config }})..."
-          sleep 30
+          exit 1
           echo "Done"
 
       - name: Report final result to Relay Server
