@@ -37,17 +37,16 @@ jobs:
     if: ${{ github.event.client_payload.payload.action != 'closed' }}
     runs-on: ubuntu-latest
     strategy:
-      # Report each leg independently; one leg failing must not cancel the rest.
       fail-fast: false
+      # 15 条腿 × 2 次回调(in_progress + completed)= 30 次,
+      # 远超 per-repo 的 20/60s 限流阈值 → 触发 429。
       matrix:
-        config: [cpu, cuda, rocm]
+        config: [c01, c02, c03, c04, c05, c06, c07, c08,
+                 c09, c10, c11, c12, c13, c14, c15]
 
     steps:
-      - name: Checkout downstream repo
-        uses: actions/checkout@v6
-
-      # github.job is "ci" for every matrix leg, so pass a matrix-scoped job-name
-      # to give each leg its own upstream check run (crcr/.../ci/ci-<config>).
+      # 不 checkout、不 sleep —— 只发两次回调,让它们在同一秒内齐发,
+      # 确保所有回调落在同一个 60s 窗口里。
       - name: Report in-progress to Relay Server
         uses: cosdt/UpStream/.github/@main
         with:
@@ -55,18 +54,12 @@ jobs:
           job-name: ci-${{ matrix.config }}
           callback-url: https://nmbnhgoqesx4iuxuzoa7sjklna0ylkgr.lambda-url.us-east-1.on.aws/github/callback/
 
-      - name: Run CI
-        run: |
-          echo "Running downstream CI (config=${{ matrix.config }})..."
-          exit 1
-          echo "Done"
-
       - name: Report final result to Relay Server
         if: always()
         uses: cosdt/UpStream/.github/@main
         with:
           status: completed
-          conclusion: failure
+          conclusion: success
           job-name: ci-${{ matrix.config }}
           callback-url: https://nmbnhgoqesx4iuxuzoa7sjklna0ylkgr.lambda-url.us-east-1.on.aws/github/callback/
 
